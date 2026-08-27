@@ -229,6 +229,27 @@ class CrawlerRepository:
                 """,
                 (raw_document_id, job["id"], batch.model_dump_json(), batch.quality_signals.get("completeness", 0)),
             )
+            scheduled_links = 0
+            for outbound in batch.outbound_links:
+                child_job_id = uuid4()
+                cursor.execute(
+                    """
+                    INSERT INTO ingestion.job(
+                      id,job_type,required_capability,status,priority,dedupe_key,payload,
+                      source_id,crawl_run_id,available_at,not_before,max_attempts
+                    ) VALUES (%s,'URL_FETCH','INGESTION','QUEUED',%s,%s,%s::jsonb,%s,%s,now(),now(),4)
+                    ON CONFLICT (dedupe_key) DO NOTHING
+                    """,
+                    (
+                        child_job_id,
+                        outbound.priority,
+                        f"crawl:{job['crawl_run_id']}:{outbound.dedupe_key}",
+                        outbound.model_dump_json(),
+                        job["source_id"],
+                        job["crawl_run_id"],
+                    ),
+                )
+                scheduled_links += cursor.rowcount
             for assertion in batch.assertions:
                 cursor.execute(
                     """
@@ -273,15 +294,31 @@ class CrawlerRepository:
             cursor.execute("UPDATE ingestion.job SET status='SUCCEEDED', completed_at=now(), finished_at=now(), lease_expires_at=NULL WHERE id=%s", (job["id"],))
             cursor.execute(
                 """
-                UPDATE ingestion.crawl_run SET status='SUCCEEDED', started_at=COALESCE(started_at,now()), finished_at=now(),
+                UPDATE ingestion.crawl_run r SET
+                  status=CASE WHEN EXISTS (
+                    SELECT 1 FROM ingestion.job pending
+                    WHERE pending.crawl_run_id=r.id AND pending.id<>%s
+                      AND pending.status IN ('QUEUED','RETRY_WAIT','LEASED','RUNNING')
+                  ) THEN 'RUNNING' ELSE 'SUCCEEDED' END,
+                  started_at=COALESCE(started_at,now()),
+                  finished_at=CASE WHEN EXISTS (
+                    SELECT 1 FROM ingestion.job pending
+                    WHERE pending.crawl_run_id=r.id AND pending.id<>%s
+                      AND pending.status IN ('QUEUED','RETRY_WAIT','LEASED','RUNNING')
+                  ) THEN NULL ELSE now() END,
                   pages_fetched=pages_fetched+1, bytes_fetched=bytes_fetched+%s,
                   assertions_emitted=assertions_emitted+%s, candidates_emitted=candidates_emitted+1,
                   media_discovered=media_discovered+%s, logos_discovered=logos_discovered+%s,
                   warnings_count=warnings_count+%s, logo_discovery_status=%s
                 WHERE id=%s
                 """,
-                (len(result.body), len(batch.assertions), len(batch.media_candidates), sum(1 for item in batch.media_candidates if item.category.endswith("LOGO")), len(batch.warnings), logo_status, job["crawl_run_id"]),
+                (job["id"], job["id"], len(result.body), len(batch.assertions), len(batch.media_candidates), sum(1 for item in batch.media_candidates if item.category.endswith("LOGO")), len(batch.warnings), logo_status, job["crawl_run_id"]),
             )
+            if scheduled_links:
+                cursor.execute(
+                    "UPDATE ingestion.crawl_run SET pages_scheduled=pages_scheduled+%s WHERE id=%s",
+                    (scheduled_links, job["crawl_run_id"]),
+                )
             cursor.execute(
                 """
                 INSERT INTO ingestion.source_sync_state(
