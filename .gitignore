@@ -40,3 +40,6 @@ yarn-error.log*
 /work/
 *.tsbuildinfo
 /var/crawler/
+__pycache__/
+*.py[cod]
+*.egg-info/
