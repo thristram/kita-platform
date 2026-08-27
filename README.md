@@ -6,7 +6,7 @@ KitaCon is an anime and Japanese pop-culture event intelligence platform with a 
 
 | Area | Status |
 | --- | --- |
-| Operator Console (`/`) | Database-backed events, media, sources, jobs, totals, and settings |
+| Operator Console (`/`) | Database-backed events, media, sources, jobs, totals, settings, and editable event workspaces |
 | Customer discovery (`/discover`) | Database-backed `serving.event_listing` query |
 | Neon Postgres | Connected to project `sweet-resonance-98374848` in organization `org-mute-snow-95755930` |
 | Schema and sample data | Migrations `0001` and `0002` applied to `production/neondb` |
@@ -59,8 +59,12 @@ PORT=3001 npm run dev
 Routes:
 
 - `http://localhost:3001/` - operator Console
+- `http://localhost:3001/events/<event-uuid>` - canonical event editor
 - `http://localhost:3001/discover` - customer discovery
+- `http://localhost:3001/discover/events/<event-uuid>` - customer-style operator preview
 - `http://localhost:3001/api/health/db` - live Neon health check
+
+Event cards carry their canonical Neon UUID into the event editor. **Save changes** updates `event.event` and the primary `event.event_text` summary; **Publish/Unpublish** synchronizes `serving.event_listing`; and **Fandom Links** writes `event.event_entity` relationships. The customer discovery list only includes serving rows whose status is `PUBLISHED`.
 
 ## Neon database
 
