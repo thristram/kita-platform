@@ -29,12 +29,12 @@ test("server-renders the P1 consumer discovery surface", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /Your fandoms are/);
-  assert.match(html, /Personalized discovery/);
-  assert.match(html, /Because you follow Frieren/);
+  assert.match(html, /Database discovery/);
+  assert.match(html, /canonical database/);
 });
 
 test("removes the disposable starter preview", async () => {
   const packageJson = await readFile(new URL("../package.json", import.meta.url), "utf8");
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
-  await assert.rejects(access(new URL("../app\/_sites-preview\/SkeletonPreview.tsx", import.meta.url)));
+  await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
 });

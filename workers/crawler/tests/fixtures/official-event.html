@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Fallback title</title>
+    <meta property="og:title" content="Anime Expo 2027" />
+    <meta property="og:description" content="A celebration of Japanese pop culture." />
+    <meta property="og:image" content="/media/ax-hero.jpg" />
+    <link rel="icon" href="/favicon.ico" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "name": "SPJA",
+            "logo": {"@type": "ImageObject", "url": "/media/spja-logo.svg"}
+          },
+          {
+            "@type": "Event",
+            "name": "Anime Expo 2027",
+            "description": "A celebration of Japanese pop culture.",
+            "startDate": "2027-07-02T09:00:00-07:00",
+            "endDate": "2027-07-05T18:00:00-07:00",
+            "location": {
+              "@type": "Place",
+              "name": "Los Angeles Convention Center"
+            },
+            "image": ["/media/ax-key-visual.jpg"],
+            "logo": "/media/ax-logo.svg"
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header><img src="/media/site-wordmark.svg" alt="Anime Expo logo" /></header>
+    <main>
+      <h1>Anime Expo</h1>
+      <a href="/events/industry-registration">Industry registration</a>
+      <a href="https://outside.example/events/ignore">External event</a>
+    </main>
+  </body>
+</html>
