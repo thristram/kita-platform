@@ -2,11 +2,17 @@
   "name": "@kita/platform-console",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "packages/contracts",
+    "packages/evidence-pipeline",
+    "packages/resolution-agent",
+    "packages/anime-knowledge-service"
+  ],
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
+    "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev --port 3009",
     "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "test": "npm run build && node --env-file=.env.local --test tests/rendered-html.test.mjs",
@@ -15,9 +21,23 @@
     "db:migrate": "drizzle-kit migrate",
     "crawler:doctor": "workers/crawler/.venv/bin/crawler doctor",
     "crawler:worker": "workers/crawler/.venv/bin/crawler worker",
-    "crawler:drain": "workers/crawler/.venv/bin/crawler drain"
+    "crawler:drain": "workers/crawler/.venv/bin/crawler drain",
+    "evidence:build": "npm run build --workspace @kita/contracts && npm run build --workspace @kita/evidence-pipeline",
+    "evidence:test": "npm run build --workspace @kita/contracts && npm test --workspace @kita/evidence-pipeline",
+    "agent:build": "npm run build --workspace @kita/contracts && npm run build --workspace @kita/evidence-pipeline && npm run build --workspace @kita/resolution-agent",
+    "agent:dev": "npm run build --workspace @kita/contracts && npm run build --workspace @kita/evidence-pipeline && npm run dev --workspace @kita/resolution-agent",
+    "agent:worker": "npm run build --workspace @kita/contracts && npm run build --workspace @kita/evidence-pipeline && npm run worker --workspace @kita/resolution-agent",
+    "agent:test": "npm run build --workspace @kita/contracts && npm run build --workspace @kita/evidence-pipeline && npm test --workspace @kita/resolution-agent",
+    "knowledge:build": "npm run build --workspace @kita/contracts && npm run build --workspace @kita/anime-knowledge-service",
+    "knowledge:dev": "npm run build --workspace @kita/contracts && npm run dev --workspace @kita/anime-knowledge-service",
+    "knowledge:start": "npm run build --workspace @kita/contracts && npm run start --workspace @kita/anime-knowledge-service",
+    "knowledge:mcp": "npm run mcp --workspace @kita/anime-knowledge-service",
+    "knowledge:test": "npm run build --workspace @kita/contracts && npm test --workspace @kita/anime-knowledge-service"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1119.0",
+    "@aws-sdk/s3-request-presigner": "^3.1119.0",
+    "@kita/evidence-pipeline": "0.1.0",
     "@neon/config": "^1.0.4",
     "@neon/env": "^1.1.4",
     "@neondatabase/serverless": "^1.1.0",
@@ -27,8 +47,10 @@
     "cmdk": "^1.1.1",
     "dotenv": "^17.4.2",
     "drizzle-orm": "0.45.2",
+    "jose": "^6.2.12",
     "lucide-react": "^1.34.0",
     "next-themes": "^0.4.6",
+    "openid-client": "^6.8.8",
     "radix-ui": "^1.6.7",
     "react": "19.2.6",
     "react-dom": "19.2.6",

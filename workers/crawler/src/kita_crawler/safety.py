@@ -9,6 +9,7 @@ from .models import SourcePolicy
 
 SENSITIVE_QUERY_KEYS = {"access_token", "api_key", "auth", "key", "secret", "signature", "sig", "token"}
 SENSITIVE_HEADERS = {"authorization", "cookie", "proxy-authorization", "set-cookie", "x-api-key"}
+TRACKING_QUERY_KEYS = {"fbclid", "gclid", "mc_cid", "mc_eid", "ref_src", "igshid"}
 
 
 class PolicyViolation(ValueError):
@@ -24,7 +25,12 @@ def canonicalize_url(url: str) -> str:
         port = None
     netloc = host if port is None else f"{host}:{port}"
     path = parsed.path or "/"
-    safe_query = urlencode(sorted(parse_qsl(parsed.query, keep_blank_values=True)))
+    safe_query = urlencode(sorted(
+        (key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if not key.lower().startswith("utm_")
+        and key.lower() not in TRACKING_QUERY_KEYS
+        and not any(token in key.lower() for token in ("sessionid", "session_id", "phpsessid"))
+    ))
     return urlunsplit((scheme, netloc, path, safe_query, ""))
 
 
@@ -35,7 +41,7 @@ def validate_url(url: str, policy: SourcePolicy, *, allow_private_network: bool 
         raise PolicyViolation("Only HTTP and HTTPS URLs are permitted")
     if parsed.username or parsed.password:
         raise PolicyViolation("Embedded URL credentials are forbidden")
-    if parsed.port not in {None, 80, 443}:
+    if parsed.port not in {None, 80, 443} and not allow_private_network:
         raise PolicyViolation("Non-standard ports require explicit implementation review")
     host = parsed.hostname or ""
     if not any(host == allowed or host.endswith(f".{allowed}") for allowed in policy.allowed_domains):
@@ -64,4 +70,3 @@ def redact_url(url: str) -> str:
 
 def stable_key(*parts: str) -> str:
     return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()
-

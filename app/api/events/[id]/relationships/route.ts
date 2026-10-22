@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { requireApiAccess } from "@/lib/consoleApiAccess";
 import { addConsoleEventRelation, getConsoleEventDetail, removeConsoleEventRelation } from "@/db/events";
 
 const relationSchema = z.object({
@@ -31,9 +32,13 @@ async function mutate(
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await requireApiAccess(request, "events:write");
+  if (denied) return denied;
   return mutate(request, params, "add");
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await requireApiAccess(request, "events:write");
+  if (denied) return denied;
   return mutate(request, params, "remove");
 }

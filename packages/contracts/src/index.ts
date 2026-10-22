@@ -39,3 +39,8 @@ export interface CandidateDecision {
   editedPayload?: Record<string, unknown>;
   mergeTargetId?: CanonicalId;
 }
+
+export * from "./resolution-agent.js";
+export * from "./anime-knowledge.js";
+export * from "./token-budget.js";
+export * from "./event-prompt.js";

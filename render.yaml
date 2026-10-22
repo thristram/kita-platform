@@ -1,0 +1,25 @@
+services:
+  - type: worker
+    name: kitacon-crawler
+    runtime: docker
+    dockerfilePath: ./docker/crawler.Dockerfile
+    dockerContext: .
+    envVars:
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      - key: CRAWLER_WORKER_NAME
+        value: kitacon-render-crawler
+      - key: CRAWLER_ARTIFACT_MODE
+        value: r2
+      - key: CRAWLER_USER_AGENT
+        value: KitaConCrawler/0.1 (+https://kitacon.app/crawler-policy)
+      - key: R2_ENDPOINT_URL
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_RAW_BUCKET
+        value: kitacon-raw
+      - key: R2_MEDIA_BUCKET
+        value: kitacon-media

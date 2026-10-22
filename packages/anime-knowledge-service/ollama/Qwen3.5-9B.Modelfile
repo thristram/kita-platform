@@ -1,0 +1,5 @@
+FROM /Volumes/NVMEData/models/Qwen3.5-9B-UD-Q4_K_XL.gguf
+
+# The service controls JSON mode and temperature per request. Keep enough
+# context for retrieved knowledge while staying practical on a 24 GB Mac.
+PARAMETER num_ctx 32768

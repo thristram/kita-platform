@@ -2,18 +2,46 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from typing import Protocol
 
 from scrapling.fetchers import DynamicFetcher, Fetcher, StealthyFetcher
 
 from .config import Settings
-from .models import CrawlRequest, FetchMode, FetchPlan, FetchResult, SourcePolicy
+from .models import CapturedArtifact, CrawlRequest, FetchMode, FetchPlan, FetchResult, SourcePolicy
 from .safety import PolicyViolation, redact_headers, validate_url
 
 
-class CrawlerEngine(Protocol):
+class WebFetchBackend(Protocol):
     async def fetch(self, request: CrawlRequest, plan: FetchPlan, policy: SourcePolicy) -> FetchResult: ...
+
+
+CrawlerEngine = WebFetchBackend
+
+
+_LEADING_REGEX_FLAGS = re.compile(r"^\(\?([aiLmsux]+)\)")
+
+
+def _capture_xhr_regex(patterns: list[str]) -> str | None:
+    if not patterns:
+        return None
+    branches = []
+    for original in patterns:
+        pattern = original
+        flags = []
+        while match := _LEADING_REGEX_FLAGS.match(pattern):
+            flags.append(match.group(1))
+            pattern = pattern[match.end():]
+        for flag in reversed(flags):
+            pattern = f"(?{flag}:{pattern})"
+        branches.append(f"(?:{pattern})")
+    combined = "|".join(branches)
+    try:
+        re.compile(combined)
+    except re.error as error:
+        raise ValueError(f"Invalid capture_xhr_patterns regex: {error}") from error
+    return combined
 
 
 def _response_body(response: object) -> bytes:
@@ -58,6 +86,7 @@ class ScraplingEngine:
             )
         else:
             fetcher = DynamicFetcher if plan.mode == FetchMode.DYNAMIC else StealthyFetcher
+            capture_xhr = _capture_xhr_regex(request.capture_xhr_patterns)
             options = {
                 "headless": True,
                 "disable_resources": False,
@@ -68,7 +97,7 @@ class ScraplingEngine:
                 "extra_headers": headers,
                 "locale": request.locale_hint or "en-US",
                 "timezone_id": policy.timezone,
-                "capture_xhr": request.capture_xhr_patterns[0] if request.capture_xhr_patterns else None,
+                "capture_xhr": capture_xhr,
                 "block_ads": True,
             }
             if plan.mode == FetchMode.STEALTH:
@@ -76,21 +105,45 @@ class ScraplingEngine:
             response = await asyncio.to_thread(fetcher.fetch, url, **options)
         duration_ms = round((time.perf_counter() - started) * 1000)
         body = _response_body(response)
-        if len(body) > 15 * 1024 * 1024:
-            raise PolicyViolation("Response exceeds the 15 MB text limit")
+        max_response_bytes = int(request.metadata.get("max_response_bytes", 50 * 1024 * 1024 if request.expected_content_types != ["text/html"] else 15 * 1024 * 1024))
+        if len(body) > min(max_response_bytes, policy.max_bytes_per_run):
+            raise PolicyViolation("Response exceeds the configured size limit")
         response_headers = _response_headers(response)
         content_type = response_headers.get("content-type", "text/html").split(";", 1)[0]
         lower = body[:250_000].lower()
         blocked = None
-        if b"captcha" in lower or b"access denied" in lower or b"login required" in lower:
+        if any(marker in lower for marker in (
+            b"access denied",
+            b"login required",
+            b"performing security verification",
+            b"verifies you are not a bot",
+            b"verify you are human",
+            b"complete the captcha",
+            b"solve the captcha",
+            b"<title>captcha",
+            b"cf-chl-",
+        )):
             blocked = "BLOCKED_ACCESS_CONTROL"
         captured = []
+        captured_artifacts = []
+        captured_bytes = 0
+        max_captured_artifacts = int(request.metadata.get("max_captured_artifacts", 64))
+        max_captured_bytes = int(request.metadata.get("max_captured_bytes", 25 * 1024 * 1024))
         for xhr in getattr(response, "captured_xhr", []) or []:
-            captured.append({
-                "url": str(getattr(xhr, "url", "")),
-                "status": int(getattr(xhr, "status", 200)),
-                "content_type": _response_headers(xhr).get("content-type"),
-            })
+            xhr_url = str(getattr(xhr, "url", ""))
+            xhr_status = int(getattr(xhr, "status", 200))
+            xhr_type = _response_headers(xhr).get("content-type", "application/octet-stream").split(";", 1)[0]
+            if len(captured) < max_captured_artifacts:
+                captured.append({"url": xhr_url, "status": xhr_status, "content_type": xhr_type})
+            xhr_body = _response_body(xhr)
+            if (
+                xhr_body
+                and ("json" in xhr_type or xhr_type.startswith("text/"))
+                and len(captured_artifacts) < max_captured_artifacts
+                and captured_bytes + len(xhr_body) <= max_captured_bytes
+            ):
+                captured_artifacts.append(CapturedArtifact(url=xhr_url, status_code=xhr_status, content_type=xhr_type, body=xhr_body))
+                captured_bytes += len(xhr_body)
         return FetchResult(
             requested_url=url,
             final_url=str(getattr(response, "url", url)),
@@ -106,5 +159,5 @@ class ScraplingEngine:
             last_modified=response_headers.get("last-modified"),
             blocked_reason=blocked,
             captured_xhr=json.loads(json.dumps(captured)),
+            captured_artifacts=captured_artifacts,
         )
-

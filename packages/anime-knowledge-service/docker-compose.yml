@@ -1,0 +1,18 @@
+services:
+  anime-knowledge-service:
+    build:
+      context: ../..
+      dockerfile: packages/anime-knowledge-service/Dockerfile
+    env_file:
+      - .env.local
+    volumes:
+      - ${KNOWLEDGE_DATA_ROOT:-./data}:/knowledge-data
+    environment:
+      KNOWLEDGE_SERVICE_HOST: 0.0.0.0
+      KNOWLEDGE_DATA_ROOT: /knowledge-data
+      LLM_BASE_URL: http://host.docker.internal:11434
+    ports:
+      - "127.0.0.1:4320:4320"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

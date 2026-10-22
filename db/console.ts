@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "./index";
+import { getCrawlerDashboardStatus, type CrawlerDashboardStatus } from "./crawler";
 
 export interface ConsoleEvent {
   id: string;
@@ -30,19 +31,27 @@ export interface ConsoleSource {
   type: string;
   trust: string;
   status: string;
+  baseUrl: string;
   lastSuccess: string;
   nextRun: string;
   items: string;
   enabled: boolean;
   policyStatus: string;
+  policyNote: string;
+  contactIdentity: string;
   dataOrigin: "LIVE" | "MOCK";
+  maxDepth: number;
+  maxPagesPerRun: number;
+  connectorKey: string;
+  followOfficialSites: boolean;
+  discoverLinkedEvents: boolean;
 }
 
 export interface ConsoleSnapshot {
   events: ConsoleEvent[];
   assets: ConsoleAsset[];
   sources: ConsoleSource[];
-  jobs: ConsoleJob[];
+  crawler: CrawlerDashboardStatus;
   totals: {
     events: number;
     entities: number;
@@ -52,17 +61,6 @@ export interface ConsoleSnapshot {
     queuedJobs: number;
   };
   consumerShowMockData: boolean;
-}
-
-export interface ConsoleJob {
-  id: string;
-  type: string;
-  capability: string;
-  priority: string;
-  status: string;
-  worker: string;
-  age: string;
-  dataOrigin: "LIVE" | "MOCK";
 }
 
 const relativeTime = (value: unknown): string => {
@@ -86,7 +84,7 @@ const eventDate = (value: unknown): string => {
 
 export async function getConsoleSnapshot(): Promise<ConsoleSnapshot> {
   const db = getDb();
-  const [eventsResult, assetsResult, sourcesResult, jobsResult, totalsResult, settingResult] = await Promise.all([
+  const [eventsResult, assetsResult, sourcesResult, crawler, totalsResult, settingResult] = await Promise.all([
     db.execute(sql`
       SELECT e.id, e.canonical_name AS title, e.event_type AS type, e.start_at,
         e.status, e.data_origin, e.metadata, v.city, v.region,
@@ -97,10 +95,10 @@ export async function getConsoleSnapshot(): Promise<ConsoleSnapshot> {
       LEFT JOIN ingestion.assertion a ON a.subject_id = e.id
       LEFT JOIN event.event_entity ee ON ee.event_id = e.id AND ee.status = 'ACTIVE'
       LEFT JOIN core.entity linked ON linked.id = ee.entity_id
-      WHERE e.end_at IS NULL OR e.end_at >= now()
+      WHERE COALESCE(e.end_at, e.start_at) >= now()
       GROUP BY e.id, v.city, v.region
-      ORDER BY e.start_at ASC NULLS LAST
-      LIMIT 50
+      ORDER BY e.start_at ASC NULLS LAST, e.id ASC
+      LIMIT 4
     `),
     db.execute(sql`
       SELECT id, COALESCE(metadata->>'title', original_filename, 'Untitled asset') AS title,
@@ -112,8 +110,9 @@ export async function getConsoleSnapshot(): Promise<ConsoleSnapshot> {
       LIMIT 50
     `),
     db.execute(sql`
-      SELECT s.id, s.name, s.source_type, s.trust_level, s.enabled,
-        s.terms_review_status, s.data_origin, st.last_success_at, st.next_fetch_at,
+      SELECT s.id, s.name, s.source_type, s.connector_key, s.trust_level, s.enabled, s.base_url,s.config,
+        s.terms_review_status, s.terms_review_note, s.contact_identity, s.data_origin,s.max_depth,s.max_pages_per_run,
+        st.last_success_at, st.next_fetch_at,
         count(DISTINCT rd.id)::int AS item_count
       FROM ingestion.source s
       LEFT JOIN ingestion.source_sync_state st ON st.source_id = s.id
@@ -122,24 +121,15 @@ export async function getConsoleSnapshot(): Promise<ConsoleSnapshot> {
       ORDER BY s.priority, s.name
       LIMIT 100
     `),
-    db.execute(sql`
-      SELECT j.id,j.job_type,j.required_capability,j.priority,j.status,j.created_at,
-        COALESCE(w.worker_name,'Unassigned') AS worker,
-        COALESCE(s.data_origin,'LIVE') AS data_origin
-      FROM ingestion.job j
-      LEFT JOIN ingestion.worker w ON w.id=j.leased_by
-      LEFT JOIN ingestion.source s ON s.id=j.source_id
-      ORDER BY j.created_at DESC
-      LIMIT 100
-    `),
+    getCrawlerDashboardStatus(),
     db.execute(sql`
       SELECT
         (SELECT count(*)::int FROM event.event) AS events,
         (SELECT count(*)::int FROM core.entity) AS entities,
         (SELECT count(*)::int FROM media.asset) AS assets,
         (SELECT count(*)::int FROM ingestion.source WHERE enabled) AS sources,
-        (SELECT count(*)::int FROM ingestion.candidate WHERE status = 'PENDING') AS review,
-        (SELECT count(*)::int FROM ingestion.job WHERE status IN ('QUEUED','RETRY_WAIT','LEASED','RUNNING')) AS queued_jobs
+        (SELECT count(*)::int FROM ingestion.candidate WHERE status = 'PENDING' AND candidate_type='EVENT_RESOLUTION' AND published_event_id IS NULL) AS review,
+        (SELECT count(*)::int FROM ingestion.job WHERE job_type<>'EVENT_RESOLUTION' AND status IN ('QUEUED','RETRY_WAIT','LEASED','RUNNING')) AS queued_jobs
     `),
     db.execute(sql`SELECT COALESCE((value #>> '{}')::boolean, false) AS enabled FROM system.runtime_setting WHERE key='consumer_show_mock_data'`),
   ]);
@@ -173,23 +163,22 @@ export async function getConsoleSnapshot(): Promise<ConsoleSnapshot> {
       type: String(row.source_type),
       trust: String(row.trust_level),
       status: row.enabled ? "Healthy" : "Disabled",
+      baseUrl: String(row.base_url || ""),
       lastSuccess: relativeTime(row.last_success_at),
       nextRun: row.next_fetch_at ? relativeTime(row.next_fetch_at) : "Manual",
       items: String(row.item_count || 0),
       enabled: Boolean(row.enabled),
       policyStatus: String(row.terms_review_status),
+      policyNote: String(row.terms_review_note || ""),
+      contactIdentity: String(row.contact_identity || ""),
       dataOrigin: String(row.data_origin) as "LIVE" | "MOCK",
+      maxDepth: Number(row.max_depth || 3),
+      maxPagesPerRun: Number(row.max_pages_per_run || 100),
+      connectorKey: String(row.connector_key || "website"),
+      followOfficialSites: Boolean((row.config as Record<string, unknown> | null)?.follow_official_sites),
+      discoverLinkedEvents: (row.config as Record<string, unknown> | null)?.discover_linked_events !== false,
     })),
-    jobs: jobsResult.rows.map((row) => ({
-      id: String(row.id),
-      type: String(row.job_type).replaceAll("_", " "),
-      capability: String(row.required_capability),
-      priority: String(row.priority),
-      status: String(row.status).toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase()),
-      worker: String(row.worker),
-      age: relativeTime(row.created_at),
-      dataOrigin: String(row.data_origin) as "LIVE" | "MOCK",
-    })),
+    crawler,
     totals: {
       events: Number(totals.events || 0),
       entities: Number(totals.entities || 0),

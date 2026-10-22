@@ -28,11 +28,50 @@ class FetchModeHint(StrEnum):
 class PageType(StrEnum):
     LISTING = "LISTING"
     EVENT = "EVENT"
+    OVERVIEW = "OVERVIEW"
+    ABOUT = "ABOUT"
+    SCHEDULE = "SCHEDULE"
+    PROGRAMMING = "PROGRAMMING"
+    GUESTS = "GUESTS"
+    EXHIBITORS = "EXHIBITORS"
+    VENDORS = "VENDORS"
+    ARTIST_ALLEY = "ARTIST_ALLEY"
+    TICKETS = "TICKETS"
+    REGISTRATION = "REGISTRATION"
+    NEWS = "NEWS"
+    ANNOUNCEMENTS = "ANNOUNCEMENTS"
+    MAP = "MAP"
+    FAQ = "FAQ"
+    POLICIES = "POLICIES"
+    ACCESSIBILITY = "ACCESSIBILITY"
     ORGANIZATION = "ORGANIZATION"
     VENUE = "VENUE"
     PRESS = "PRESS"
     MEDIA_KIT = "MEDIA_KIT"
     OTHER = "OTHER"
+
+
+class LinkKind(StrEnum):
+    INTERNAL_PAGE = "INTERNAL_PAGE"
+    OFFICIAL_SITE = "OFFICIAL_SITE"
+    TICKETING = "TICKETING"
+    X = "X"
+    INSTAGRAM = "INSTAGRAM"
+    VENUE = "VENUE"
+    PDF = "PDF"
+    MEDIA = "MEDIA"
+    ORGANIZER = "ORGANIZER"
+    EXHIBITOR = "EXHIBITOR"
+    OTHER_EXTERNAL = "OTHER_EXTERNAL"
+
+
+class DiscoveryDecision(StrEnum):
+    FETCH = "FETCH"
+    DEFER = "DEFER"
+    IGNORE = "IGNORE"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    BLOCKED = "BLOCKED"
+    ALREADY_KNOWN = "ALREADY_KNOWN"
 
 
 class SourcePolicy(StrictModel):
@@ -48,7 +87,7 @@ class SourcePolicy(StrictModel):
     allowed_domains: list[str] = Field(default_factory=list)
     allowed_path_prefixes: list[str] = Field(default_factory=lambda: ["/"])
     denied_path_prefixes: list[str] = Field(default_factory=list)
-    max_depth: int = 2
+    max_depth: int = 3
     max_pages_per_run: int = 100
     max_bytes_per_run: int = 262_144_000
     max_runtime_seconds: int = 1800
@@ -63,6 +102,7 @@ class SourcePolicy(StrictModel):
     store_screenshot_policy: str = "ON_FAILURE"
     timezone: str = "UTC"
     configuration: dict[str, Any] = Field(default_factory=dict)
+    root_event_id: UUID | None = None
 
 
 class CrawlRequest(StrictModel):
@@ -111,6 +151,14 @@ class FetchResult(StrictModel):
     blocked_reason: str | None = None
     screenshot: bytes | None = None
     captured_xhr: list[dict[str, Any]] = Field(default_factory=list)
+    captured_artifacts: list["CapturedArtifact"] = Field(default_factory=list)
+
+
+class CapturedArtifact(StrictModel):
+    url: str
+    status_code: int = 200
+    content_type: str = "application/octet-stream"
+    body: bytes = Field(exclude=True)
 
 
 class FetchedDocument(StrictModel):
@@ -133,6 +181,9 @@ class FetchedDocument(StrictModel):
     etag: str | None = None
     last_modified: str | None = None
     content_sha256: str
+    page_type: PageType = PageType.OTHER
+    depth: int = 0
+    root_event_id: UUID | None = None
     blocked_reason: str | None = None
     body: bytes = Field(exclude=True)
 
@@ -173,6 +224,28 @@ class MediaCandidate(StrictModel):
     attribution: str | None = None
 
 
+class DiscoveredLink(StrictModel):
+    url: str
+    normalized_url: str
+    anchor_text: str = ""
+    link_kind: LinkKind
+    page_hint: PageType = PageType.OTHER
+    priority_score: float = 0
+    decision: DiscoveryDecision
+    decision_reason: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DocumentChunk(StrictModel):
+    chunk_index: int
+    heading_path: str | None = None
+    content: str
+    language: str | None = None
+    char_start: int | None = None
+    char_end: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class ExtractionBatch(StrictModel):
     connector_key: str
     connector_version: str
@@ -181,7 +254,8 @@ class ExtractionBatch(StrictModel):
     source_records: list[dict[str, Any]] = Field(default_factory=list)
     assertions: list[Assertion] = Field(default_factory=list)
     outbound_links: list[CrawlRequest] = Field(default_factory=list)
+    discovered_links: list[DiscoveredLink] = Field(default_factory=list)
+    document_chunks: list[DocumentChunk] = Field(default_factory=list)
     media_candidates: list[MediaCandidate] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     quality_signals: dict[str, Any] = Field(default_factory=dict)
-

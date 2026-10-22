@@ -21,6 +21,7 @@ msgspec==0.21.1
 orjson==3.12.0
 packaging==26.3
 patchright==1.62.1
+pillow==12.1.1
 playwright==1.62.0
 pluggy==1.6.0
 Protego==0.6.2
@@ -29,6 +30,7 @@ psycopg-binary==3.3.4
 pycparser==3.0
 pydantic==2.13.4
 pydantic_core==2.46.4
+pypdf==6.7.1
 pyee==13.0.1
 Pygments==2.21.0
 pytest==9.1.1
@@ -46,4 +48,3 @@ typing-inspection==0.4.4
 typing_extensions==4.16.0
 urllib3==2.7.0
 w3lib==2.4.1
-

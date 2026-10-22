@@ -11,15 +11,25 @@ async function render(pathname = "/") {
   }, { waitUntil() {}, passThroughOnException() {} });
 }
 
-test("server-renders the KitaCon operational Console", async () => {
+test("private Console redirects to OIDC sign-in without a session", async () => {
   const response = await render();
+  assert.equal(response.status, 307);
+  assert.match(response.headers.get("location") ?? "", /^\/sign-in\?returnTo=/);
+  const privateResponse = await render("/overview");
+  assert.equal(privateResponse.status, 307);
+  assert.match(privateResponse.headers.get("location") ?? "", /^\/sign-in\?returnTo=/);
+  const apiResponse = await render("/api/candidates");
+  assert.equal(apiResponse.status, 401);
+  assert.equal((await apiResponse.json()).error, "AUTH_REQUIRED");
+});
+
+test("server-renders the public Console sign-in page", async () => {
+  const response = await render("/sign-in");
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /KitaCon Console/);
-  assert.match(html, /Source health/);
-  assert.match(html, /Intelligence queue/);
-  assert.match(html, /Editorial review/);
+  assert.match(html, /Continue with identity provider/);
   assert.match(html, /og:image/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });

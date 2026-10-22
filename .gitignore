@@ -30,16 +30,22 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
 
 /dist/
+/packages/*/dist/
 /.wrangler/
 /outputs/
 /work/
 *.tsbuildinfo
 /var/crawler/
+/packages/resolution-agent/data/
+/packages/resolution-agent/.env.local
+/packages/anime-knowledge-service/data/
+/packages/anime-knowledge-service/.env.local
 __pycache__/
 *.py[cod]
 *.egg-info/

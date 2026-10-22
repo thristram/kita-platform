@@ -1,7 +1,10 @@
 import { sql } from "drizzle-orm";
+import { requireApiAccess } from "@/lib/consoleApiAccess";
 import { getDb } from "@/db";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = await requireApiAccess(request, "console:read");
+  if (denied) return denied;
   try {
     const result = await getDb().execute(sql`
       SELECT
